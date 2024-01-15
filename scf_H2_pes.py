@@ -651,5 +651,5 @@ for i in x:
 
 plt.plot(x, pes)
 plt.grid()
+plt.savefig('PES.png', dpi=300)
 plt.show()
-# plt.savefig('PES.png', dpi=300)

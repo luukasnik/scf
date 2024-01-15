@@ -620,7 +620,6 @@ for i in range(niter):
     # calculate new energies
     E_0 = calculate_E_0(P=P, Hcore=Hcore, F=F)
     Etot_new = calculate_Etot(E_0)
-    print()
 
     print(f"Energy for iteration {i} is {Etot_new}")
     # compare old energy to new energy
