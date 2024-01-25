@@ -384,4 +384,4 @@ while E_diff > tol:
                             P_prot=P_prot, F_prot=F_prot, Hcore_prot=H_prot)
     E_diff = abs(E_old-E_new)
     E_old = E_new
-print(f"Energy converged to {E_new}")
+print(f"Energy converged to {E_new}")  # -1.0595693802943844
