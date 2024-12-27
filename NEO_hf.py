@@ -1,10 +1,7 @@
 import numpy as np
 import math
-import requests
-import matplotlib.pyplot as plt
 
-
-# Hartree Fock of H2
+# NEO Hartree Fock of H2
 
 
 class Primitive_gaussian:
@@ -38,22 +35,41 @@ class Gaussian_basis:
             Coordinates for the middlepoint of the orbital
     '''
 
-    def __init__(self, R: np.ndarray, basis: str, atom: int) -> None:
-        function_coeffs = {
-            "H": {"d": [0.1543289673E+00, 0.5353281423E+00, 0.4446345422E+00], "a": [0.3425250914E+01, 0.6239137298E+00, 0.1688554040E+00]}, "He": {"d": [0.1543289673E+00, 0.5353281423E+00, 0.4446345422E+00], "a": [0.6362421394E+01, 0.1158922999E+01, 0.3136497915E+00]},
-            "test": {"d": [0.1543289673E+00, 0.5353281423E+00], "a": [0.6362421394E+01, 0.1158922999E+01]}
-        }
-        r = requests.get(
-            f'https://www.basissetexchange.org/api/basis/{basis}/format/json')
-        exponents = r.json()[
-            'elements'][str(atom)]['electron_shells'][0]['exponents']
-        coefficients = r.json()[
-            'elements'][str(atom)]['electron_shells'][0]['coefficients'][0]
-        exponents = [float(i) for i in exponents]
-        coefficients = [float(i) for i in coefficients]
-        self.coeffs = coefficients
+    def __init__(self, R: np.ndarray, atom: str) -> None:
+        function_coeffs = {"H": {"d": [0.1543289673E+00, 0.5353281423E+00, 0.4446345422E+00],
+                                 "a": [0.3425250914E+01, 0.6239137298E+00, 0.1688554040E+00]},
+                           "He": {"d": [0.1543289673E+00, 0.5353281423E+00, 0.4446345422E+00],
+                                  "a": [0.6362421394E+01, 0.1158922999E+01, 0.3136497915E+00]},
+                           "proton": {"d": [1, 1],
+                                      "a": [8, 4]}
+                           }
+        self.coeffs = function_coeffs[atom]["d"]
         self.gaussians = [Primitive_gaussian(
-            i, R) for i in exponents]
+            i, R) for i in function_coeffs[atom]["a"]]
+
+
+class Uncontracted_Gaussian_basis:
+    '''
+    A class repersenting a slater type orbital with three primitive Gaussians.
+
+    Attributes:
+        R : np.ndarray
+            Coordinates for the middlepoint of the orbital
+    '''
+
+    def __init__(self, R: np.ndarray, atom: str) -> None:
+        function_coeffs = {"H": {"d": [0.1543289673E+00, 0.5353281423E+00, 0.4446345422E+00],
+                                 "a": [0.3425250914E+01, 0.6239137298E+00, 0.1688554040E+00]},
+                           "He": {"d": [0.1543289673E+00, 0.5353281423E+00, 0.4446345422E+00],
+                                  "a": [0.6362421394E+01, 0.1158922999E+01, 0.3136497915E+00]},
+                           "proton1": {"d": [1],
+                                       "a": [4]},
+                           "proton2": {"d": [1],
+                                       "a": [8]}
+                           }
+        self.coeffs = function_coeffs[atom]["d"]
+        self.gaussians = [Primitive_gaussian(
+            i, R) for i in function_coeffs[atom]["a"]]
 
 
 def gaussian_integral(gauss1: Primitive_gaussian, gauss2: Primitive_gaussian) -> float:
@@ -284,7 +300,32 @@ def calculate_V(basis_sets: list) -> np.ndarray:
         Matrix of the potential energies
     '''
     V_tot = np.zeros([len(basis_sets), len(basis_sets)])
-    for n in range(N):
+    for n in range(N_elec):
+        V = np.zeros([len(basis_sets), len(basis_sets)])
+        for i in range(len(basis_sets)):
+            for j in range(i, len(basis_sets)):
+                V[i, j] = -potential_energy(basis_sets[i], basis_sets[j], n)
+                V[j, i] = V[i, j]
+        V_tot += V
+    return V_tot
+
+
+def calculate_V_elec(basis_sets: list) -> np.ndarray:
+    '''
+    Calculates potential energy T for the Hcore matrix. 
+
+    Parameters
+    ----------
+    basis_sets : list
+        List of the basis sets in atomic order
+
+    Returns
+    -------
+    np.ndarray
+        Matrix of the potential energies
+    '''
+    V_tot = np.zeros([len(basis_sets), len(basis_sets)])
+    for n in [0]:
         V = np.zeros([len(basis_sets), len(basis_sets)])
         for i in range(len(basis_sets)):
             for j in range(i, len(basis_sets)):
@@ -294,7 +335,26 @@ def calculate_V(basis_sets: list) -> np.ndarray:
     return V_tot
 
 
-def calculate_Hcore(basis_sets: list) -> np.ndarray:
+def calculate_Hcore_elec(basis_sets: list) -> np.ndarray:
+    '''
+    Calculates the Hcore matrix. 
+
+    Parameters
+    ----------
+    basis_sets : list
+        List of the basis sets in atomic order
+
+    Returns
+    -------
+    np.ndarray
+        Hcore matrix
+    '''
+    T = calculate_T(basis_sets)
+    V = calculate_V_elec(basis_sets)
+    return T + V
+
+
+def calculate_Hcore_prot(basis_sets: list) -> np.ndarray:
     '''
     Calculates the Hcore matrix. 
 
@@ -310,9 +370,7 @@ def calculate_Hcore(basis_sets: list) -> np.ndarray:
     '''
     T = calculate_T(basis_sets)
     V = calculate_V(basis_sets)
-    print(T)
-    print(V)
-    return T + V
+    return T/1836.15267389 + V
 
 
 def calculate_two_electron_integral_gaussian(g1: Primitive_gaussian, g2: Primitive_gaussian, g3: Primitive_gaussian, g4: Primitive_gaussian) -> float:
@@ -454,7 +512,33 @@ def create_two_integral_lookup_symmetry(basis_sets: list) -> np.ndarray:
     return two_integral_lookup
 
 
-def calculate_F(basis_sets: list, Hcore: np.ndarray, P: np.ndarray) -> np.ndarray:
+def create_two_integral_lookup_mixed(basis_elec, basis_prot):
+    l_el = len(basis_elec)
+    l_pr = len(basis_prot)
+    # l = l_el if l_el > l_pr else l_pr
+    two_integral_lookup = np.zeros([l_el, l_el, l_pr, l_pr])
+    for i in range(l_el):
+        for j in range(l_el):
+            for ii in range(l_pr):
+                for jj in range(l_pr):
+                    two_integral_lookup[i, j, ii, jj] = calculate_two_electron_integral(
+                        basis_elec[i], basis_elec[j], basis_prot[ii], basis_prot[jj])
+    return two_integral_lookup
+
+
+def create_two_integral_lookup_protonic(prot_basis):
+    l = len(prot_basis)
+    two_integral_lookup = np.zeros([l, l, l, l])
+    for i in range(l):
+        for j in range(l):
+            for ii in range(l):
+                for jj in range(l):
+                    two_integral_lookup[i, j, ii, jj] = calculate_two_electron_integral(
+                        prot_basis[i], prot_basis[j], prot_basis[ii], prot_basis[jj])
+    return two_integral_lookup
+
+
+def calculate_F_elec(basis_sets: list, prot_basis: list, Hcore: np.ndarray, P_elec: np.ndarray, P_prot: np.ndarray) -> np.ndarray:
     '''
     Calculates the fock matrix 
 
@@ -477,11 +561,63 @@ def calculate_F(basis_sets: list, Hcore: np.ndarray, P: np.ndarray) -> np.ndarra
             G_temp = 0.0
             for ii in range(len(basis_sets)):
                 for jj in range(len(basis_sets)):
-                    G_temp += P[ii, jj]*(integral_lookup[i, j, ii, jj] -
-                                         0.5*integral_lookup[i, jj, ii, j])
+                    G_temp += P_elec[ii, jj]*(integral_lookup_elec[i, j, ii, jj] -
+                                              0.5*integral_lookup_elec[i, jj, ii, j])
             G[i, j] += G_temp
 
-    return Hcore + G
+    G_mixed = np.zeros([len(basis_sets), len(basis_sets)])
+    for i in range(len(basis_sets)):
+        for j in range(len(basis_sets)):
+            G_temp = 0.0
+            for ii in range(len(prot_basis)):
+                for jj in range(len(prot_basis)):
+                    G_temp += P_prot[ii, jj] * \
+                        integral_lookup_mixed[i, j, ii, jj]
+
+            G_mixed[i, j] += G_temp
+
+    return Hcore + G - G_mixed
+
+
+def calculate_F_prot(prot_basis: list, basis_sets: list, Hcore_prot: np.ndarray, P_elec: np.ndarray, P_prot: np.ndarray) -> np.ndarray:
+    '''
+    Calculates the fock matrix 
+
+    Parameters
+    ----------
+    prot_basis : list
+        List of the basis sets in atomic order.
+    Hcore : np.ndarray
+        Hcore matrix.
+    P : np.ndarray
+        Density matrix.
+    Returns
+    -------
+    np.ndarray
+        Fock matrix
+    '''
+    G = np.zeros([len(prot_basis), len(prot_basis)])
+    for i in range(len(prot_basis)):
+        for j in range(len(prot_basis)):
+            G_temp = 0.0
+            for ii in range(len(prot_basis)):
+                for jj in range(len(prot_basis)):
+                    G_temp += P_prot[ii, jj]*(integral_lookup_prot[i, j, ii, jj] -
+                                              integral_lookup_prot[i, jj, ii, j])
+            G[i, j] += G_temp
+
+    G_mixed = np.zeros([len(prot_basis), len(prot_basis)])
+    for i in range(len(prot_basis)):
+        for j in range(len(prot_basis)):
+            G_temp = 0.0
+            for ii in range(len(basis_sets)):
+                for jj in range(len(basis_sets)):
+                    G_temp += P_elec[ii, jj] * \
+                        integral_lookup_mixed[i, j, ii, jj]
+
+            G_mixed[i, j] += G_temp
+
+    return Hcore_prot + G - G_mixed
 
 
 def calculate_X(S: np.ndarray) -> np.ndarray:
@@ -509,7 +645,7 @@ def calculate_X(S: np.ndarray) -> np.ndarray:
     return X
 
 
-def calculate_P(C: np.ndarray) -> np.ndarray:
+def calculate_P(basis_sets, C: np.ndarray) -> np.ndarray:
     '''
     Calculates the density matrix
 
@@ -523,10 +659,31 @@ def calculate_P(C: np.ndarray) -> np.ndarray:
         Density matrix.
     '''
     P = np.zeros([len(basis_sets), len(basis_sets)])
-    for n in range(int(N/2)):
+    for n in range(int(N_elec/2)):
         for i in range(len(basis_sets)):
             for j in range(len(basis_sets)):
                 P[i, j] += 2*C[i, n]*C[j, n]
+    return P
+
+
+def calculate_P_prot(prot_basis, C: np.ndarray) -> np.ndarray:
+    '''
+    Calculates the density matrix
+
+    Parameters
+    ----------
+    C : np.ndarray
+        Coefficient matrix
+    Returns
+    -------
+    np.ndarray
+        Density matrix.
+    '''
+    P = np.zeros([len(prot_basis), len(prot_basis)])
+    for n in range(int(N_Qprot)):
+        for i in range(len(prot_basis)):
+            for j in range(len(prot_basis)):
+                P[i, j] += C[i, n]*C[j, n]
     return P
 
 
@@ -548,8 +705,8 @@ def calculate_E_0(P: np.ndarray, Hcore: np.ndarray, F: np.ndarray) -> float:
         E_0
     '''
     E_0 = 0.0
-    for i in range(N):
-        for j in range(N):
+    for i in range(N_elec):
+        for j in range(N_elec):
             E_0 += P[i, j]*(Hcore[i, j] + F[i, j])
     return 0.5*E_0
 
@@ -574,65 +731,91 @@ def calculate_Etot(E_0: float) -> float:
     return E_0 + E_rep
 
 
+def calculate_E_neo(P_elec, F_elec, Hcore_elec, P_prot, F_prot, Hcore_prot) -> float:
+    E = 0.0
+    for i in range(N_elec):
+        for j in range(N_elec):
+            E += 0.5*P_elec[i, j]*(Hcore_elec[i, j] + F_elec[i, j])
+    for i in range(Natoms):
+        for j in range(Natoms):
+            E += 0.5*P_prot[i, j]*(Hcore_prot[i, j] + F_prot[i, j])
+    return E
+
+
 # xyz coordinates of the atoms
-coords = np.array([[0.0, 0.0, 0.0]])
-#    [1.4, 0.0, 0.0]])
+coords = np.array([[0.0, 0.0, 0.0],
+                   [1.4, 0.0, 0.0]])
 
 # nucelar charge of the atoms
-Z = [1]
+Z = [1, 1]
 
 # number of atoms
-Natoms = 1
+Natoms = 2
 
 # number of electrons
-N = 1
+N_elec = 2
+N_Catoms = 1
+N_Qprot = 1
 
 # define basis set for each electron
-basis_sets = [Gaussian_basis(coords[0], 'sto-6g', 1)]
-#   Gaussian_basis(coords[1], 'sto-6g', 1)]
+basis_sets = [Gaussian_basis(coords[0], "H"), Gaussian_basis(coords[1], "H")]
+prot_basis = [Uncontracted_Gaussian_basis(coords[0], 'proton1'),
+              Uncontracted_Gaussian_basis(coords[0], 'proton2')]
 # calculate overlap matrix for each basis function pair
-S = create_overlap_matrix(basis_sets)
+S_elec = create_overlap_matrix(basis_sets)
+S_prot = create_overlap_matrix(prot_basis)
 # calculate tranformation matrix X
-X = calculate_X(S)
+X_elec = calculate_X(S_elec)
+X_prot = calculate_X(S_prot)
 # initialize density matrix P to 0, meaning first iteration is done with only core potential
-P = np.zeros([len(basis_sets), len(basis_sets)])
+P_elec = np.zeros([len(basis_sets), len(basis_sets)])
+P_prot = np.zeros([len(prot_basis), len(prot_basis)])
 
 # initialize a two integral lookup for all nbasis^4 quadruples of two integrals
-integral_lookup = create_two_integral_lookup_symmetry(basis_sets)
+integral_lookup_elec = create_two_integral_lookup_symmetry(basis_sets)
+integral_lookup_mixed = create_two_integral_lookup_mixed(
+    basis_sets, prot_basis)
+integral_lookup_prot = create_two_integral_lookup_protonic(prot_basis)
 
 # calculate Hcore
-Hcore = calculate_Hcore(basis_sets)
-# calculate initial fock matrix
-F = calculate_F(basis_sets=basis_sets, Hcore=Hcore, P=P)
+Hcore_elec = calculate_Hcore_elec(basis_sets)
+Hcore_prot = calculate_Hcore_prot(prot_basis)
 
+# calculate initial fock matrix
+F_elec = calculate_F_elec(basis_sets=basis_sets, prot_basis=prot_basis, Hcore=Hcore_elec,
+                          P_elec=P_elec, P_prot=P_prot)
+F_prot = calculate_F_prot(prot_basis, basis_sets, Hcore_prot, P_elec, P_prot)
 # transform fock matrix to fit the equation F'C' = C'e
-F_transformed = X.T@F@X
+F_elec_transformed = X_elec.T@F_elec@X_elec
+F_prot_transformed = X_prot.T@F_prot@X_prot
 # calculate energy eigenvalues and C matrix
-e, C_transformed = np.linalg.eigh(F)
+e_elec, C_elec_transformed = np.linalg.eigh(F_elec)
 # transform C' back to C
-C = X@C_transformed
+C_elec = X_elec@C_elec_transformed
 # calculate energies for first iteration
-E_0 = calculate_E_0(P=P, Hcore=Hcore, F=F)
+E_0 = calculate_E_0(P=P_elec, Hcore=Hcore_elec, F=F_elec)
 Etot_old = calculate_Etot(E_0)
 
 # calculate new density matrix using the calculated C
-P = calculate_P(C)
+P_elec = calculate_P(basis_sets=basis_sets, C=C_elec)
 
 niter = 25
 tol = 1E-6
 
+# First converge non NEO calculation
 for i in range(niter):
     # calculate new fock matrix with updatet P
-    F = calculate_F(basis_sets=basis_sets, Hcore=Hcore, P=P)
+    F_elec = calculate_F_elec(basis_sets=basis_sets, prot_basis=prot_basis, Hcore=Hcore_elec,
+                              P_elec=P_elec, P_prot=P_prot)
     # transform fock matrix to fit the equation F'C' = C'e
-    F_transformed = X.T@F@X
+    F_elec_transformed = X_elec.T@F_elec@X_elec
     # calculate energy eigenvalues and C matrix
-    e, C_transformed = np.linalg.eigh(F_transformed)
+    e_elec, C_elec_transformed = np.linalg.eigh(F_elec_transformed)
     # transform C' back to C
-    C = X@C_transformed
+    C_elec = X_elec@C_elec_transformed
 
     # calculate new energies
-    E_0 = calculate_E_0(P=P, Hcore=Hcore, F=F)
+    E_0 = calculate_E_0(P=P_elec, Hcore=Hcore_elec, F=F_elec)
     Etot_new = calculate_Etot(E_0)
 
     print(f"Energy for iteration {i} is {Etot_new}")
@@ -643,8 +826,45 @@ for i in range(niter):
     Etot_old = Etot_new
 
     # calculate new density matrix using the calculated C
-    P = calculate_P(C)
+    P_elec = calculate_P(basis_sets, C_elec)
 
 
-# plt.scatter([1.4, 0], [0, 0])
-# plt.show()
+niter = 25
+tol = 1E-6
+for i in range(niter):
+    # PROTON
+    F_prot = calculate_F_prot(prot_basis=prot_basis, basis_sets=basis_sets,
+                              Hcore_prot=Hcore_prot, P_elec=P_elec, P_prot=P_prot)
+    # transform fock matrix to fit the equation F'C' = C'e
+    F_prot_transformed = X_prot.T@F_prot@X_prot
+    # calculate energy eigenvalues and C matrix
+    e_prot, C_prot_transformed = np.linalg.eigh(F_prot_transformed)
+    # transform C' back to C
+    C_prot = X_prot@C_prot_transformed
+    # calculate new density matrix using the calculated C
+    P_prot = calculate_P_prot(prot_basis, C_prot)
+
+    # ELECTRON
+
+    # calculate new fock matrix with updatet P
+    F_elec = calculate_F_elec(basis_sets=basis_sets, prot_basis=prot_basis, Hcore=Hcore_elec,
+                              P_elec=P_elec, P_prot=P_prot)
+    # transform fock matrix to fit the equation F'C' = C'e
+    F_elec_transformed = X_elec.T@F_elec@X_elec
+    # calculate energy eigenvalues and C matrix
+    e_elec, C_elec_transformed = np.linalg.eigh(F_elec_transformed)
+    # transform C' back to C
+    C_elec = X_elec@C_elec_transformed
+    # calculate new density matrix using the calculated C
+    P_elec = calculate_P(basis_sets, C_elec)
+
+    # calculate new energies
+    Etot_new = calculate_E_neo(
+        P_elec, F_elec, Hcore_elec, P_prot, F_prot, Hcore_prot)
+
+    print(f"Energy for iteration {i} is {Etot_new}")
+    # compare old energy to new energy
+    if abs(Etot_new-Etot_old) < tol:
+        print(f"Energy converged to {Etot_new}")
+        break
+    Etot_old = Etot_new
